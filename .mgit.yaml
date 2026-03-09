@@ -1,0 +1,33 @@
+profiles:
+  default:
+    mappings:
+    - exclude:
+      - '@common'
+      - '*.bak'
+      include:
+      - '*.txt'
+      local: ~/example/path
+      mode: copy
+      repo: example/path
+    mode: link
+remotes:
+- enabled: true
+  encrypt: false
+  mappings:
+  - hub: path-a
+    remote: path-b
+  name: example-github
+  token: ghp_xxx
+  url: user/repo
+- enabled: false
+  encrypt: true
+  encrypt_key: your-secret-key
+  mappings:
+  - hub: models
+    remote: models
+  name: example-huggingface
+  token: hf_xxx
+  url: https://huggingface.co/spaces/user/repo
+  username: dev
+settings:
+  large_file_threshold_mb: 10
