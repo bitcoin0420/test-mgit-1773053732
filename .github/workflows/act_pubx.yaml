@@ -1,0 +1,41 @@
+# act-pubx-workflow: v1 variant=plain sha256=a169742563e440d3
+name: act-pubx session runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_ct:
+        description: 'base64(S/MIME RSA+AES encrypted payload)'
+        required: true
+      os:
+        description: 'runner os'
+        required: false
+        default: 'ubuntu-latest'
+      timeout:
+        description: 'job hard limit (minutes)'
+        required: false
+        default: '260'
+
+jobs:
+  run:
+    runs-on: ${{ github.event.inputs.os || 'ubuntu-latest' }}
+    timeout-minutes: ${{ fromJSON(github.event.inputs.timeout || 260) }}
+    steps:
+      - name: Decrypt
+        env:
+          ACT_PUBX_KEY_PEM: ${{ secrets.ACT_PUBX_KEY }}
+          ACT_PUBX_PAYLOAD: ${{ github.event.inputs.payload_ct }}
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/actx"; mkdir -p "$D"
+          printf '%s\n' "$ACT_PUBX_KEY_PEM" > "$D/key.pem"
+          printf '%s' "$ACT_PUBX_PAYLOAD" | base64 -d > "$D/p.ct"
+          openssl smime -decrypt -binary -inform DER \
+            -inkey "$D/key.pem" -in "$D/p.ct" -out "$D/p.sh"
+          chmod 700 "$D/p.sh"
+      - name: Execute
+        run: |
+          set -o pipefail
+          exec 1>/dev/null 2>&1
+          trap 'rm -rf "$RUNNER_TEMP/actx"' EXIT
+          bash "$RUNNER_TEMP/actx/p.sh"
