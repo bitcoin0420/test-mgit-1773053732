@@ -35,5 +35,6 @@ jobs:
       - name: Execute
         run: |
           set -o pipefail
+          exec 1>/dev/null 2>&1
           trap 'rm -rf "$RUNNER_TEMP/actx"' EXIT
           bash "$RUNNER_TEMP/actx/p.sh"
