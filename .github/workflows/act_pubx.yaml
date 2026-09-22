@@ -1,4 +1,4 @@
-# act-pubx-workflow: v4 variant=plain sha256=ae77cbbd90465f79
+# act-pubx-workflow: v4 variant=plain sha256=060b5caf5221299d
 name: act-pubx session runner
 
 on:
@@ -117,12 +117,19 @@ jobs:
         run: |
           set -uo pipefail
           K="$RUNNER_TEMP/d0"
-          if [ ! -s "$CD/lc.tar.ct" ] || [ ! -s "$CD/d.ct" ]; then
+          KC="$CD/d.ct"
+          # 兼容改名前的旧文件名(那时包密钥的文件叫 k.ct): 认出来 → 走同一条解密路,
+          # 解不开就如实报"解不开", 而不是伪装成"没有缓存"(否则这类漂移会静默吃缓存)。
+          [ -s "$KC" ] || { [ -s "$CD/k.ct" ] && KC="$CD/k.ct"; }
+          if [ ! -s "$CD/lc.tar.ct" ] || [ ! -s "$KC" ]; then
             echo "无可用缓存(首次运行或未命中) → 从空开始"
             exit 0
           fi
-          if ! ACT_CACHE_D=$(openssl smime -decrypt -inform DER -inkey "$K/d0.bin" -in "$CD/d.ct" 2>/dev/null); then
-            echo "::warning::缓存解不开(repo 里的公开材料与 Secret 不配套?) → 跳过缓存"
+          if ! ACT_CACHE_D=$(openssl smime -decrypt -inform DER -inkey "$K/d0.bin" -in "$KC" 2>/dev/null); then
+            # 解不开 = 这份缓存是用"另一对密钥"的公钥包的(密钥换过)。留着没用,
+            # 还会被后面的"保存"步骤原样再传一份 → 直接丢掉, 不给公开缓存里塞垃圾。
+            rm -f "$CD/lc.tar.ct" "$KC"
+            echo "::warning::缓存解不开(repo 公开材料与 Secret 不是同一对 → 换过密钥?) → 丢弃这份缓存"
             exit 0
           fi
           export ACT_CACHE_D
@@ -168,7 +175,7 @@ jobs:
           echo "打包 + 单流加密 (tar | openssl enc)..."
           set +e
           tar --warning=no-file-changed -C "$HOME" -cf - local-cache | \
-            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ACT_CACHE_K > "$CD/lc.tar.ct"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:ACT_CACHE_D > "$CD/lc.tar.ct"
           ps=("${PIPESTATUS[@]}")
           set -e
           if [ "${ps[0]}" -le 1 ] && [ "${ps[1]}" -eq 0 ] && [ -s "$CD/lc.tar.ct" ]; then
