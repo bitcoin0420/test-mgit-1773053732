@@ -1,4 +1,4 @@
-# act-pubx-workflow: v2 variant=dev sha256=ec6cd22eff540f94
+# act-pubx-workflow: v2 variant=plain sha256=a01406c8fbc010c2
 name: act-pubx session runner
 
 on:
@@ -137,7 +137,7 @@ jobs:
           rc=$(cat "$D/session.rc" 2>/dev/null || echo 0)
           case "$rc" in ''|*[!0-9]*) rc=0 ;; esac
           echo "会话已结束 (rc=$rc)"
-          echo "--- 会话日志尾部 ---"; tail -n 200 "$D/session.log" 2>/dev/null || true
+          echo "(public 模式: 会话输出不外泄; 排障用 ACT_DEV=1 sync 的版本)"
           exit "$rc"
 
       - name: 打包 + 加密缓存
