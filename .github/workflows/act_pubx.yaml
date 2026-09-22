@@ -1,4 +1,4 @@
-# act-pubx-workflow: v3 variant=plain sha256=3f89b9fe47def70c
+# act-pubx-workflow: v4 variant=plain sha256=ae77cbbd90465f79
 name: act-pubx session runner
 
 on:
@@ -48,8 +48,20 @@ jobs:
             || echo "::warning::取公开材料失败 → 本轮不做缓存(会话不受影响)"
           D="$RUNNER_TEMP/actx"; mkdir -p "$D"
           printf '%s' "$ACT_PUBX_PAYLOAD" | base64 -d > "$D/p.ct"
-          openssl smime -decrypt -binary -inform DER \
-            -inkey "$K/d0.bin" -in "$D/p.ct" -out "$D/p.sh"
+          # 载荷两种信封(管道其余部分完全一致):
+          #   {v:1,k,n,c} → WebCrypto 客户端(Worker/浏览器/Deno/边缘): AES-256-CBC(脚本)
+          #                 + RSA-OAEP(把 32 字节密钥当 hex 文本包起来)
+          #   其它(DER)   → 传统 S/MIME: 本地 act-pubx / curl / python 客户端
+          if [ "$(head -c1 "$D/p.ct")" = "{" ]; then
+            ENC="$D/enc"; mkdir -p "$ENC"
+            jq -r .k "$D/p.ct" | base64 -d > "$ENC/cek.bin"
+            jq -r .c "$D/p.ct" | base64 -d > "$ENC/body.bin"
+            openssl pkeyutl -decrypt -inkey "$K/d0.bin" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 -in "$ENC/cek.bin" -out "$ENC/cek.hex"
+            openssl enc -d -aes-256-cbc -K "$(cat "$ENC/cek.hex")" -iv "$(jq -r .n "$D/p.ct")" -in "$ENC/body.bin" -out "$D/p.sh"
+            rm -f "$ENC/cek.bin" "$ENC/cek.hex" "$ENC/body.bin"
+          else
+            openssl smime -decrypt -binary -inform DER -inkey "$K/d0.bin" -in "$D/p.ct" -out "$D/p.sh"
+          fi
           chmod 700 "$D/p.sh"
           # 缓存暂存目录: 优先 /mnt(大分区, 3-5GB 级靠得住), 不行退回 $HOME
           CD=""
