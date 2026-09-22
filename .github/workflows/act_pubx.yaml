@@ -1,3 +1,4 @@
+# act-pubx-workflow: v1 variant=plain sha256=a169742563e440d3
 name: act-pubx session runner
 
 on:
