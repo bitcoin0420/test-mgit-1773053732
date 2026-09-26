@@ -1,4 +1,4 @@
-# act-pubx-workflow: v4 variant=plain sha256=d45def8c69d2b699
+# act-pubx-workflow: v4 variant=plain sha256=f9e22c1067604821
 name: act-pubx session runner
 
 on:
@@ -175,9 +175,14 @@ jobs:
           # `curl -o` 会因目录不存在而失败, 而那句提示会说成"工具取不到"(指错方向)。
           mkdir -p "$RUNNER_TEMP/actx"
           B="$RUNNER_TEMP/actx/oci-store"
+          # 本次"恢复是否可信"的门令牌: 下面的备份步骤只看它。
+          # 为什么必须有: 恢复失败时会话会从一个**空目录**开始, 收工时再把空目录推上去
+          # → 产生一个"少了旧内容"的新快照, 而它是最新的 → 别人恢复到的就是"东西全没了"。
+          # 宁可这一轮的改动不保存(会话照跑), 也绝不拿空目录去覆盖别人的快照。
+          rm -f "$RUNNER_TEMP/actx/grp_restore_ok"
           if [ ! -s "$B" ]; then
             if ! curl -fsSL "$SURL" -o "$B"; then
-              echo "::warning::组存储: 工具取不到 ($SURL) → 本次从空开始"
+              echo "::error::组存储: 工具取不到 ($SURL) → 本次从空开始, 并且**跳过收工推送**"
               exit 0
             fi
             chmod +x "$B"
@@ -186,9 +191,11 @@ jobs:
           "$B" restore /tmp/storage --tag "$GRP"
           rc=$?
           case "$rc" in
-            0) echo "✓ 组存储已就位: /tmp/storage/$GRP" ;;
-            4) echo "组 '$GRP' 还没有快照(首次) → 从空开始" ;;
-            *) echo "::warning::组存储拉取失败 (rc=$rc) → 从空开始(不拿半份坏数据起)" ;;
+            0) echo "✓ 组存储已就位: /tmp/storage/$GRP"
+               : > "$RUNNER_TEMP/actx/grp_restore_ok" ;;
+            4) echo "组 '$GRP' 还没有快照(首次) → 从空开始"
+               : > "$RUNNER_TEMP/actx/grp_restore_ok" ;;
+            *) echo "::error::组存储拉取失败 (rc=$rc) → 会话从空目录开始, **收工不推送**(否则会把别人的快照覆盖成空); 本次改动不会被保存" ;;
           esac
           exit 0
 
@@ -251,12 +258,22 @@ jobs:
           set +e
           set -uo pipefail
           D="/tmp/storage/$GRP"
-          if [ ! -d "$D" ]; then echo "没有 $D → 不保存"; exit 0; fi
+          # 先看"这次恢复可信吗"。不可信就**绝不推**: 从空/半份目录推上去会生成一个
+          # 缺少旧内容的新快照, 而它是最新的 —— 别人恢复到的就是"东西没了"。
+          # (普通失败也必须响亮: 以前这里只有 echo / ::warning::, 用户看不到)
+          if [ ! -f "$RUNNER_TEMP/actx/grp_restore_ok" ]; then
+            echo "::error::组存储: 本次开工时**没恢复成功** → 跳过收工推送。理由: 拿空目录推上去会把最新的快照变成「少了旧内容」的那份。本轮的改动不会被保存。"
+            exit 0
+          fi
+          if [ ! -d "$D" ]; then
+            echo "::warning::组存储: 没有 $D (会话没往组存储里写东西) → 不推"
+            exit 0
+          fi
           mkdir -p "$RUNNER_TEMP/actx"      # 同上: 不依赖别的步骤替我们建目录
           B="$RUNNER_TEMP/actx/oci-store"
           if [ ! -s "$B" ]; then
             if ! curl -fsSL "$SURL" -o "$B"; then
-              echo "::warning::组存储: 工具取不到 ($SURL) → 本次不推"
+              echo "::error::组存储: 工具取不到 ($SURL) → 本次不推(本轮改动不会被保存)"
               exit 0
             fi
             chmod +x "$B"
@@ -269,6 +286,6 @@ jobs:
             0) echo "✓ 组存储已推送 (tag=$GRP)" ;;
             3) echo "::warning::组存储: 部分已传、快照未提交(rc=3) —— 可安全重跑, 已传的块会跳过" ;;
             4) echo "::warning::组存储: tag '$GRP' 没有可用快照(rc=4)" ;;
-            *) echo "::warning::组存储推送失败 (rc=$rc) —— 本次不推, 下次重跑会接上" ;;
+            *) echo "::error::组存储推送失败 (rc=$rc) —— **本轮改动没被保存**; 下次会话重跑会接上这块" ;;
           esac
           exit 0
