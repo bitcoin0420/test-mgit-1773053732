@@ -1,4 +1,4 @@
-# act-pubx-workflow: v4 variant=plain sha256=dbd55e485e6f23e8
+# act-pubx-workflow: v5 variant=plain sha256=b3ab329a6b05720f
 name: act-pubx session runner
 
 on:
@@ -23,6 +23,10 @@ on:
         description: '1=启用缓存, 0=关闭'
         required: false
         default: '1'
+      cache_ns:
+        description: '缓存命名空间: 会话=ct, 一次性/客户端=oneoff(两边互不还原)'
+        required: false
+        default: 'oneoff'
       group:
         description: '组名; 空 = 不用组存储'
         required: false
@@ -110,9 +114,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.prep.outputs.cachedir }}
-          key: ${{ runner.os }}-actcache-ct-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-actcache-${{ github.event.inputs.cache_ns }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-actcache-ct-
+            ${{ runner.os }}-actcache-${{ github.event.inputs.cache_ns }}-
 
       - name: 解密并展开缓存
         if: github.event.inputs.cache != '0' && steps.prep.outputs.cachedir != ''
@@ -291,7 +295,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.prep.outputs.cachedir }}
-          key: ${{ runner.os }}-actcache-ct-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-actcache-${{ github.event.inputs.cache_ns }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 备份组存储
         if: always() && github.event.inputs.group != ''
