@@ -1,4 +1,4 @@
-# act-pubx-workflow: v5 variant=plain sha256=f0fe052d6c459ad9
+# act-pubx-workflow: v5 variant=plain sha256=6841db7535d2c085
 name: actx windows session
 
 on:
@@ -174,12 +174,15 @@ jobs:
             fi
             chmod +x "$B"
           fi
-          GD="$(cygpath -w "$HOME/storage")"
+          GD="$(cygpath -w "$HOME")"
           mkdir -p "$HOME/storage"
           "$B" restore "$GD" --tag "$GRP"
           rc=$?
+          if [ -d "$HOME/$GRP" ] && [ -z "$(ls -A "$HOME/storage" 2>/dev/null)" ]; then
+            mv "$HOME/$GRP" "$HOME/storage" 2>/dev/null && echo "↪ 老快照的 ~/$GRP 已搬到 ~/storage"
+          fi
           case "$rc" in
-            0) echo "✓ 组存储已就位: ~/storage/$GRP"
+            0) echo "✓ 组存储已就位: ~/storage"
                : > "$RUNNER_TEMP/actx/grp_restore_ok" ;;
             4) echo "组 '$GRP' 还没有快照(首次) → 从空开始"
                : > "$RUNNER_TEMP/actx/grp_restore_ok" ;;
@@ -205,11 +208,11 @@ jobs:
             echo "::error::组存储[$LBL]: 本次开工时没恢复成功 → 不推送(否则会把别人的快照覆盖成空的)"
             exit 3
           fi
-          if [ ! -d "$HOME/storage/$GRP" ]; then
-            echo "::warning::组存储[$LBL]: 没有 ~/storage/$GRP (会话没往组存储里写东西) → 不推"
+          if [ ! -d "$HOME/storage" ] || [ -z "$(ls -A "$HOME/storage" 2>/dev/null)" ]; then
+            echo "::warning::组存储[$LBL]: ~/storage 是空的(会话没往组存储里写东西) → 不推"
             exit 4
           fi
-          D="$(cygpath -w "$HOME/storage/$GRP")"
+          D="$(cygpath -w "$HOME/storage")"
           B="$A/oci-store"
           if [ ! -s "$B" ]; then
             if ! curl -fsSL "$SURL" -o "$B"; then
